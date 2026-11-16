@@ -125,6 +125,10 @@ class SettingsDialog(QDialog):
         self.mask_ip_cb.setChecked(bool(self.cfg.get("mask_ip", False)))
         layout.addWidget(self.mask_ip_cb)
 
+        self.idle_pause_cb = QCheckBox("Пауза опросов при простое более 5 мин (AFK)")
+        self.idle_pause_cb.setChecked(bool(self.cfg.get("pause_on_idle", True)))
+        layout.addWidget(self.idle_pause_cb)
+
         self.on_top_cb = QCheckBox("Отображать поверх других окон\n(автоскрытие в полноэкранном режиме)")
         self.on_top_cb.setChecked(bool(self.cfg.get("always_on_top", True)))
         layout.addWidget(self.on_top_cb)
@@ -292,6 +296,7 @@ class SettingsDialog(QDialog):
         self.cfg["theme"] = self.theme_items[self.theme_combo.currentIndex()][0]
         self.cfg["interval"] = self.int_spin.value()
         self.cfg["mask_ip"] = self.mask_ip_cb.isChecked()
+        self.cfg["pause_on_idle"] = self.idle_pause_cb.isChecked()
         self.cfg["always_on_top"] = self.on_top_cb.isChecked()
         self.cfg["notify_on_change"] = self.notify_cb.isChecked()
 

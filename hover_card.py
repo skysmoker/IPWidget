@@ -27,6 +27,9 @@ class HoverCard(QWidget):
         self.isp_label = QLabel()
         self.isp_label.setObjectName("detailRow")
 
+        self.iface_label = QLabel()
+        self.iface_label.setObjectName("detailRow")
+
         self.ping_label = QLabel()
         self.ping_label.setObjectName("detailRow")
 
@@ -38,6 +41,7 @@ class HoverCard(QWidget):
         self.privacy_label.hide()
 
         box_layout.addWidget(self.isp_label)
+        box_layout.addWidget(self.iface_label)
         box_layout.addWidget(self.ping_label)
         box_layout.addWidget(self.tz_label)
         box_layout.addWidget(self.privacy_label)
@@ -56,7 +60,8 @@ class HoverCard(QWidget):
         ping_ms: int | None,
         timezone: str,
         is_light: bool,
-        is_private: bool = False
+        is_private: bool = False,
+        iface: str = ""
     ):
         isp_text = isp if isp else "Неизвестно"
         if len(isp_text) > 34:
@@ -65,6 +70,12 @@ class HoverCard(QWidget):
         tz_text = timezone if timezone else "—"
 
         self.isp_label.setText(f"Провайдер: {isp_text}")
+        if iface:
+            self.iface_label.setText(f"Интерфейс: {iface}")
+            self.iface_label.show()
+        else:
+            self.iface_label.hide()
+
         self.ping_label.setText(f"Пинг: {ping_text}")
         self.tz_label.setText(f"Часовой пояс: {tz_text}")
         self.privacy_label.setVisible(is_private)

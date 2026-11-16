@@ -4,7 +4,7 @@ import sys
 import winreg
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.4.35"
+APP_VERSION = "0.4.4"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"
@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
     "notify_on_change": True,
     "always_on_top": True,
     "mask_ip": False,
+    "pause_on_idle": True,
+    "idle_timeout_sec": 300,
     "last_update_check": 0,
     "apis": DEFAULT_APIS.copy()
 }
@@ -123,4 +125,3 @@ def set_autostart_enabled(enable: bool):
                     pass
     except Exception:
         pass
-

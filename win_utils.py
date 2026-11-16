@@ -6,6 +6,7 @@ from PyQt6.QtCore import QObject, QAbstractNativeEventFilter, pyqtSignal
 from config import APP_NAME, ICON_ICO_PATH
 
 user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
 MONITOR_DEFAULTTONEAREST = 2
 
 WM_POWERBROADCAST = 0x0218
@@ -35,6 +36,27 @@ class MONITORINFO(ctypes.Structure):
     ]
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.UINT),
+        ("dwTime", wintypes.DWORD),
+    ]
+
+
+def get_user_idle_seconds() -> float:
+    """Возвращает время простоя пользователя (мышь/клавиатура) в секундах."""
+    try:
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        if not user32.GetLastInputInfo(ctypes.byref(lii)):
+            return 0.0
+        tick_now = kernel32.GetTickCount()
+        elapsed_ms = (tick_now - lii.dwTime) & 0xFFFFFFFF
+        return elapsed_ms / 1000.0
+    except Exception:
+        return 0.0
+
+
 def register_app_user_model_id():
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_NAME)
@@ -48,7 +70,6 @@ def register_app_user_model_id():
 
 
 def acquire_single_instance_mutex(name: str = "IPWidget_SingleInstance_Mutex_SkySmoker"):
-    kernel32 = ctypes.windll.kernel32
     mutex = kernel32.CreateMutexW(None, False, name)
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         return None

@@ -25,7 +25,8 @@ from win_utils import (
     register_app_user_model_id,
     acquire_single_instance_mutex,
     is_other_app_fullscreen,
-    SessionPowerWatcher
+    SessionPowerWatcher,
+    get_user_idle_seconds
 )
 
 
@@ -50,6 +51,7 @@ class IPWidget(QWidget):
         self.current_ip = ""
         self.current_alpha3 = ""
         self.current_isp = ""
+        self.current_iface = ""
         self.current_ping = None
         self.current_timezone = ""
         self.worker = None
@@ -58,6 +60,7 @@ class IPWidget(QWidget):
         self.hidden_by_fullscreen = False
         self._is_hovered = False
         self._copy_feedback_active = False
+        self._is_afk_paused = False
         self._dragging = False
         self._drag_offset = QPoint()
 
@@ -73,8 +76,12 @@ class IPWidget(QWidget):
         self._apply_theme_and_scale()
 
         self.poll_timer = QTimer(self)
-        self.poll_timer.timeout.connect(self.fetch_ip)
+        self.poll_timer.timeout.connect(self._on_poll_tick)
         self.poll_timer.start(int(self.cfg["interval"]) * 1000)
+
+        self.idle_timer = QTimer(self)
+        self.idle_timer.timeout.connect(self._check_user_activity)
+        self.idle_timer.start(1000)
 
         self.fs_timer = QTimer(self)
         self.fs_timer.timeout.connect(self._check_fullscreen)
@@ -143,12 +150,14 @@ class IPWidget(QWidget):
         self.update_watcher.update_available.connect(self._on_update_found)
 
         self.session_watcher = SessionPowerWatcher(int(self.winId()), self)
-        self.session_watcher.resumed_or_unlocked.connect(
-            lambda: QTimer.singleShot(1500, self.fetch_ip)
-        )
+        self.session_watcher.resumed_or_unlocked.connect(self._on_session_resumed)
         app = QApplication.instance()
         if app:
             app.installNativeEventFilter(self.session_watcher)
+
+    def _on_session_resumed(self):
+        self._is_afk_paused = False
+        QTimer.singleShot(1500, self.fetch_ip)
 
     def _on_update_found(self, info: dict):
         self.pending_update = info
@@ -220,6 +229,31 @@ class IPWidget(QWidget):
         super().showEvent(event)
         QTimer.singleShot(0, self._position_window)
 
+    def _check_user_activity(self):
+        if not self.cfg.get("pause_on_idle", True):
+            if self._is_afk_paused:
+                self._is_afk_paused = False
+                self.fetch_ip()
+            return
+
+        threshold = int(self.cfg.get("idle_timeout_sec", 300))
+        idle_sec = get_user_idle_seconds()
+
+        if idle_sec >= threshold:
+            if not self._is_afk_paused:
+                self._is_afk_paused = True
+                if self.current_ip:
+                    self.status_dot.setStyleSheet("color: #64748b;")
+        else:
+            if self._is_afk_paused:
+                self._is_afk_paused = False
+                self.fetch_ip()
+
+    def _on_poll_tick(self):
+        if self._is_afk_paused:
+            return
+        self.fetch_ip()
+
     def fetch_ip(self):
         if self.worker and self.worker.isRunning():
             return
@@ -235,10 +269,11 @@ class IPWidget(QWidget):
                 self._position_window()
             return
 
-        self.status_dot.setStyleSheet("color: #22c55e;")
+        self.status_dot.setStyleSheet("color: #64748b;" if self._is_afk_paused else "color: #22c55e;")
         new_ip, new_alpha3 = info["ip"], info["alpha3"]
         new_city = info.get("city", "")
         self.current_isp = info.get("isp", "")
+        self.current_iface = info.get("iface", "")
         self.current_ping = info.get("ping_ms")
         self.current_timezone = info.get("timezone", "")
 
@@ -308,7 +343,14 @@ class IPWidget(QWidget):
     def _show_hover_card(self):
         if not self.isVisible() or not self.current_ip or self._dragging:
             return
-        self.hover_card.update_content(self.current_isp, self.current_ping, self.current_timezone, self._is_light(), bool(self.cfg.get("mask_ip", False)))
+        self.hover_card.update_content(
+            self.current_isp,
+            self.current_ping,
+            self.current_timezone,
+            self._is_light(),
+            bool(self.cfg.get("mask_ip", False)),
+            self.current_iface
+        )
         pos = calculate_hover_card_pos(
             self.frameGeometry(),
             self.hover_card.sizeHint().width(),
