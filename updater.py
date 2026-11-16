@@ -116,13 +116,29 @@ def apply_update_and_restart(new_exe_path: str) -> tuple[bool, str]:
 
     bat_content = f"""@echo off
 chcp 65001 >nul
+set "_MEIPASS="
+set "_MEIPASS2="
+
 :waitloop
 tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
 if not errorlevel 1 (
     timeout /t 1 /nobreak >NUL
     goto waitloop
 )
-move /Y "{new_exe_path}" "{current_exe}" >NUL
+
+timeout /t 2 /nobreak >NUL
+
+set /a tries=0
+:moveloop
+move /Y "{new_exe_path}" "{current_exe}" >NUL 2>&1
+if errorlevel 1 (
+    set /a tries+=1
+    if %tries% LSS 10 (
+        timeout /t 1 /nobreak >NUL
+        goto moveloop
+    )
+)
+
 start "" "{current_exe}"
 del "%~f0"
 """
@@ -130,16 +146,20 @@ del "%~f0"
         with open(bat_path, "w", encoding="utf-8") as f:
             f.write(bat_content)
 
+        clean_env = os.environ.copy()
+        clean_env.pop("_MEIPASS", None)
+        clean_env.pop("_MEIPASS2", None)
+
         CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(
             ["cmd.exe", "/c", bat_path],
+            env=clean_env,
             creationflags=CREATE_NO_WINDOW,
             close_fds=True
         )
         return True, ""
     except Exception as e:
         return False, f"Ошибка запуска установщика: {e}"
-
 
 class SilentUpdateWatcher(QObject):
     update_available = pyqtSignal(dict)
