@@ -4,14 +4,21 @@ import sys
 import winreg
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
-GITHUB_URL = "https://github.com/skysmoker"
+GITHUB_REPO = "skysmoker/IPWidget"
+GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
+GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-FLAGS_DIR = os.path.join(BASE_DIR, "flags")
+LEGACY_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+
+APPDATA_DIR = os.path.join(os.getenv("APPDATA") or BASE_DIR, APP_NAME)
+os.makedirs(APPDATA_DIR, exist_ok=True)
+CONFIG_PATH = os.path.join(APPDATA_DIR, "config.json")
+
+FLAGS_DIR = os.path.join(APPDATA_DIR, "flags")
 ICON_PNG_PATH = os.path.join(BASE_DIR, "app.png")
 ICON_ICO_PATH = os.path.join(BASE_DIR, "app.ico")
 
@@ -31,30 +38,32 @@ DEFAULT_CONFIG = {
     "theme": "system",
     "notify_on_change": True,
     "always_on_top": True,
+    "last_update_check": 0,
     "apis": DEFAULT_APIS.copy()
 }
 
 
 def load_config() -> dict:
-    if os.path.exists(CONFIG_PATH):
+    # Миграция настроек из старой папки рядом с .exe в %APPDATA%\IPWidget
+    source_path = CONFIG_PATH if os.path.exists(CONFIG_PATH) else LEGACY_CONFIG_PATH
+    if os.path.exists(source_path):
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            with open(source_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 merged = {**DEFAULT_CONFIG, **data}
-                # Гарантируем, что API с полными данными идут раньше api.country.is
                 saved_apis = merged.get("apis", [])
                 if not saved_apis or saved_apis[0].startswith("https://api.country.is"):
                     merged["apis"] = DEFAULT_APIS.copy()
                 else:
-                    updated = []
-                    for url in saved_apis:
-                        if url.startswith("http://ip-api.com/json/"):
-                            updated.append(DEFAULT_APIS[1])
-                        else:
-                            updated.append(url)
+                    updated = [
+                        DEFAULT_APIS[1] if u.startswith("http://ip-api.com/json/") else u
+                        for u in saved_apis
+                    ]
                     if "https://get.geojs.io/v1/ip/geo.json" not in updated:
                         updated.insert(2, "https://get.geojs.io/v1/ip/geo.json")
                     merged["apis"] = updated
+                if source_path == LEGACY_CONFIG_PATH:
+                    save_config(merged)
                 return merged
         except Exception:
             pass
@@ -63,6 +72,7 @@ def load_config() -> dict:
 
 def save_config(cfg: dict):
     try:
+        os.makedirs(APPDATA_DIR, exist_ok=True)
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=4, ensure_ascii=False)
     except Exception:

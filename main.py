@@ -2,18 +2,20 @@ import sys
 import os
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
-    QSystemTrayIcon, QMenu, QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect
 )
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QPoint
-from PyQt6.QtGui import QPixmap, QIcon, QColor, QAction, QCursor
+from PyQt6.QtGui import QPixmap, QIcon, QColor, QCursor
 
 from config import (
-    APP_NAME, APP_VERSION, ICON_PNG_PATH, ICON_ICO_PATH,
-    load_config, save_config, is_windows_light_theme
+    ICON_ICO_PATH, load_config, save_config, is_windows_light_theme,
+    get_autostart_enabled, set_autostart_enabled
 )
 from network import fetch_ip_info
 from settings_ui import SettingsDialog
 from hover_card import HoverCard
+from tray import WidgetTray
+from updater import SilentUpdateWatcher
 from win_utils import (
     register_app_user_model_id,
     acquire_single_instance_mutex,
@@ -29,23 +31,26 @@ class IpWorker(QThread):
         self.apis = apis
 
     def run(self):
-        info = fetch_ip_info(self.apis)
-        self.result_ready.emit(info)
+        self.result_ready.emit(fetch_ip_info(self.apis))
 
 
 class IPWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.cfg = load_config()
+        if get_autostart_enabled():
+            set_autostart_enabled(True)
+
         self.current_ip = ""
         self.current_alpha3 = ""
-        self.current_city = ""
         self.current_isp = ""
         self.current_ping = None
         self.current_timezone = ""
         self.worker = None
+        self.pending_update = None
         self.manually_hidden = False
         self.hidden_by_fullscreen = False
+        self._is_hovered = False
 
         self.hover_card = HoverCard()
         self.hover_timer = QTimer(self)
@@ -54,7 +59,7 @@ class IPWidget(QWidget):
         self.hover_timer.timeout.connect(self._show_hover_card)
 
         self._init_ui()
-        self._init_tray()
+        self._init_services()
         self._apply_window_flags(initial=True)
         self._apply_theme_and_scale()
         self._position_window()
@@ -117,41 +122,21 @@ class IPWidget(QWidget):
 
         outer.addWidget(self.card)
 
-    def _init_tray(self):
-        self.tray = QSystemTrayIcon(self)
-        if os.path.exists(ICON_ICO_PATH):
-            self.tray.setIcon(QIcon(ICON_ICO_PATH))
-        elif os.path.exists(ICON_PNG_PATH):
-            self.tray.setIcon(QIcon(ICON_PNG_PATH))
+    def _init_services(self):
+        self.tray = WidgetTray(self)
+        self.tray.toggle_requested.connect(self._toggle_visibility)
+        self.tray.refresh_requested.connect(self.fetch_ip)
+        self.tray.copy_requested.connect(self._copy_ip_to_clipboard)
+        self.tray.settings_requested.connect(self._open_settings)
+        self.tray.quit_requested.connect(self._quit_app)
+        self.tray.update_notice_clicked.connect(self._open_settings)
 
-        menu = QMenu()
-        self.toggle_action = QAction("Скрыть виджет", self)
-        self.toggle_action.triggered.connect(self._toggle_visibility)
+        self.update_watcher = SilentUpdateWatcher(self.cfg, self)
+        self.update_watcher.update_available.connect(self._on_update_found)
 
-        refresh_action = QAction("Обновить сейчас", self)
-        refresh_action.triggered.connect(self.fetch_ip)
-
-        copy_action = QAction("Копировать IP", self)
-        copy_action.triggered.connect(self._copy_ip_to_clipboard)
-
-        settings_action = QAction("Настройки...", self)
-        settings_action.triggered.connect(self._open_settings)
-
-        exit_action = QAction("Выход", self)
-        exit_action.triggered.connect(self._quit_app)
-
-        menu.addAction(self.toggle_action)
-        menu.addAction(refresh_action)
-        menu.addAction(copy_action)
-        menu.addSeparator()
-        menu.addAction(settings_action)
-        menu.addSeparator()
-        menu.addAction(exit_action)
-
-        self.tray.setContextMenu(menu)
-        self.tray.activated.connect(self._on_tray_activated)
-        self.tray.setToolTip(f"{APP_NAME} v{APP_VERSION}")
-        self.tray.show()
+    def _on_update_found(self, info: dict):
+        self.pending_update = info
+        self.tray.notify_update_available(info.get("version", ""))
 
     def _is_light(self) -> bool:
         theme = self.cfg.get("theme", "system")
@@ -167,18 +152,26 @@ class IPWidget(QWidget):
             self.show()
 
     def _apply_theme_and_scale(self):
-        self.setWindowOpacity(float(self.cfg.get("opacity", 0.88)))
         scale = int(self.cfg.get("scale", 100)) / 100.0
-        loc_px = max(10, int(round(12 * scale)))
-        ip_px = max(11, int(round(13.5 * scale)))
-        flag_w = max(15, int(round(20 * scale)))
-        flag_h = max(10, int(round(14 * scale)))
-        self.flag_label.setFixedSize(flag_w, flag_h)
+        self._loc_px = max(10, int(round(12 * scale)))
+        self._ip_px = max(11, int(round(13.5 * scale)))
+        self.flag_label.setFixedSize(max(15, int(round(20 * scale))), max(10, int(round(14 * scale))))
+
+        self._update_card_style()
+        self._position_window()
+
+    def _update_card_style(self):
+        base_opacity = float(self.cfg.get("opacity", 0.88))
+        self.setWindowOpacity(min(1.0, base_opacity + 0.08) if self._is_hovered else base_opacity)
 
         if self._is_light():
-            bg, fg, sub_fg, border = "rgba(255, 255, 255, 238)", "#0f172a", "#475569", "#cbd5e1"
+            bg = "rgba(255, 255, 255, 252)" if self._is_hovered else "rgba(255, 255, 255, 238)"
+            border = "#3b82f6" if self._is_hovered else "#cbd5e1"
+            fg, sub_fg = "#0f172a", "#475569"
         else:
-            bg, fg, sub_fg, border = "rgba(24, 24, 27, 238)", "#f4f4f5", "#a1a1aa", "#3f3f46"
+            bg = "rgba(34, 34, 40, 248)" if self._is_hovered else "rgba(24, 24, 27, 238)"
+            border = "#60a5fa" if self._is_hovered else "#3f3f46"
+            fg, sub_fg = "#f4f4f5", "#a1a1aa"
 
         self.card.setStyleSheet(f"""
             QWidget#mainCard {{
@@ -189,29 +182,31 @@ class IPWidget(QWidget):
             QLabel#locLabel {{
                 color: {sub_fg};
                 font-family: "Segoe UI", sans-serif;
-                font-size: {loc_px}px;
+                font-size: {self._loc_px}px;
                 font-weight: 600;
             }}
             QLabel#ipLabel {{
                 color: {fg};
                 font-family: "Segoe UI", sans-serif;
-                font-size: {ip_px}px;
+                font-size: {self._ip_px}px;
                 font-weight: 700;
             }}
             QLabel#statusDot {{
                 color: #22c55e;
-                font-size: {max(9, loc_px - 2)}px;
+                font-size: {max(9, self._loc_px - 2)}px;
             }}
         """)
-        self.card.adjustSize()
-        self.adjustSize()
 
     def _position_window(self):
+        self.card.setMinimumSize(0, 0)
+        self.card.setMaximumSize(16777215, 16777215)
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+
         self.card.adjustSize()
         self.adjustSize()
-        w = self.sizeHint().width()
-        h = self.sizeHint().height()
-        self.resize(w, h)
+        w, h = self.sizeHint().width(), self.sizeHint().height()
+        self.setFixedSize(w, h)
 
         screen = QApplication.primaryScreen()
         if not screen:
@@ -220,26 +215,13 @@ class IPWidget(QWidget):
         margin = 6
         pos = self.cfg.get("position", "bottom-right")
 
-        if pos == "top-left":
-            x, y = geo.left() + margin, geo.top() + margin
-        elif pos == "top-right":
-            x, y = geo.right() - w - margin, geo.top() + margin
-        elif pos == "bottom-left":
-            x, y = geo.left() + margin, geo.bottom() - h - margin
-        else:
-            x, y = geo.right() - w - margin, geo.bottom() - h - margin
-
+        x = (geo.left() + margin) if pos.endswith("left") else (geo.right() - w - margin)
+        y = (geo.top() + margin) if pos.startswith("top") else (geo.bottom() - h - margin)
         self.move(x, y)
 
     def showEvent(self, event):
         super().showEvent(event)
         QTimer.singleShot(0, self._position_window)
-
-    def _format_location_text(self, alpha3: str, city: str) -> str:
-        if city:
-            short_city = city if len(city) <= 22 else city[:21] + "…"
-            return f"{alpha3} — {short_city}"
-        return alpha3
 
     def fetch_ip(self):
         if self.worker and self.worker.isRunning():
@@ -257,8 +239,7 @@ class IPWidget(QWidget):
             return
 
         self.status_dot.setStyleSheet("color: #22c55e;")
-        new_ip = info["ip"]
-        new_alpha3 = info["alpha3"]
+        new_ip, new_alpha3 = info["ip"], info["alpha3"]
         new_city = info.get("city", "")
         self.current_isp = info.get("isp", "")
         self.current_ping = info.get("ping_ms")
@@ -267,10 +248,7 @@ class IPWidget(QWidget):
         changed = bool(self.current_ip) and (
             new_ip != self.current_ip or new_alpha3 != self.current_alpha3
         )
-
-        self.current_ip = new_ip
-        self.current_alpha3 = new_alpha3
-        self.current_city = new_city
+        self.current_ip, self.current_alpha3 = new_ip, new_alpha3
 
         flag_path = info.get("flag_path", "")
         if flag_path and os.path.exists(flag_path):
@@ -278,20 +256,16 @@ class IPWidget(QWidget):
         else:
             self.flag_label.clear()
 
-        self.location_label.setText(self._format_location_text(new_alpha3, new_city))
+        short_city = (new_city[:21] + "…") if len(new_city) > 22 else new_city
+        self.location_label.setText(f"{new_alpha3} — {short_city}" if short_city else new_alpha3)
         self.ip_label.setText(new_ip)
         self._position_window()
 
         loc_desc = f"{new_alpha3}, {new_city}" if new_city else new_alpha3
-        self.tray.setToolTip(f"{APP_NAME}: {new_ip} — {loc_desc}")
+        self.tray.update_status(new_ip, loc_desc)
 
         if changed and self.cfg.get("notify_on_change", True):
-            self.tray.showMessage(
-                "Смена подключения",
-                f"Новый адрес: {new_ip} ({loc_desc})",
-                QSystemTrayIcon.MessageIcon.Information,
-                4000
-            )
+            self.tray.notify_ip_change(new_ip, loc_desc)
 
     def _check_fullscreen(self):
         if not self.cfg.get("always_on_top", True):
@@ -300,13 +274,11 @@ class IPWidget(QWidget):
                 if not self.manually_hidden:
                     self.show()
             return
-
         if self.manually_hidden:
             return
 
         ignore = {int(self.winId()), int(self.hover_card.winId())}
         fs_active = is_other_app_fullscreen(ignore)
-
         if fs_active and not self.hidden_by_fullscreen:
             self.hidden_by_fullscreen = True
             self.hover_timer.stop()
@@ -318,11 +290,15 @@ class IPWidget(QWidget):
             self._position_window()
 
     def enterEvent(self, event):
+        self._is_hovered = True
+        self._update_card_style()
         if self.current_ip:
             self.hover_timer.start()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
+        self._is_hovered = False
+        self._update_card_style()
         self.hover_timer.stop()
         self.hover_card.hide()
         super().leaveEvent(event)
@@ -331,19 +307,14 @@ class IPWidget(QWidget):
         if not self.isVisible() or not self.current_ip:
             return
         self.hover_card.update_content(
-            self.current_isp,
-            self.current_ping,
-            self.current_timezone,
-            self._is_light()
+            self.current_isp, self.current_ping, self.current_timezone, self._is_light()
         )
         w_geo = self.frameGeometry()
-        c_w = self.hover_card.sizeHint().width()
-        c_h = self.hover_card.sizeHint().height()
-
+        c_w, c_h = self.hover_card.sizeHint().width(), self.hover_card.sizeHint().height()
         pos = self.cfg.get("position", "bottom-right")
+
         y = (w_geo.bottom() - 4) if pos.startswith("top") else (w_geo.top() - c_h + 4)
         x = w_geo.left() if pos.endswith("left") else (w_geo.right() - c_w)
-
         self.hover_card.move(QPoint(x, y))
         self.hover_card.show()
 
@@ -372,28 +343,25 @@ class IPWidget(QWidget):
             self.hover_timer.stop()
             self.hover_card.hide()
             self.hide()
-            self.toggle_action.setText("Показать виджет")
+            self.tray.set_widget_visible(False)
         else:
             self.manually_hidden = False
             self.hidden_by_fullscreen = False
             self.show()
             self._position_window()
-            self.toggle_action.setText("Скрыть виджет")
-
-    def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._toggle_visibility()
+            self.tray.set_widget_visible(True)
 
     def _open_settings(self):
         self.hover_timer.stop()
         self.hover_card.hide()
-        dlg = SettingsDialog(self.cfg, self)
+        pending = self.pending_update
+        self.pending_update = None
+
+        dlg = SettingsDialog(self.cfg, self, pending_update=pending)
         dlg.settings_changed.connect(self._on_settings_saved)
 
         dlg.adjustSize()
-        d_w = dlg.sizeHint().width()
-        d_h = dlg.sizeHint().height()
-
+        d_w, d_h = dlg.sizeHint().width(), dlg.sizeHint().height()
         w_geo = self.frameGeometry()
         screen = QApplication.primaryScreen()
         if screen:
@@ -406,7 +374,6 @@ class IPWidget(QWidget):
                 y = w_geo.top() - d_h - margin
             else:
                 y = min(w_geo.bottom() + margin, s_geo.bottom() - d_h - margin)
-
             dlg.move(QPoint(x, y))
 
         dlg.exec()

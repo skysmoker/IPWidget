@@ -1,16 +1,21 @@
 import os
+import time
 import tempfile
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
-    QComboBox, QSpinBox, QCheckBox, QPushButton, QFrame
+    QComboBox, QSpinBox, QCheckBox, QPushButton, QFrame,
+    QMessageBox, QProgressBar, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor, QDesktopServices
+from PyQt6.QtCore import QUrl
 from config import (
     APP_NAME, APP_VERSION, AUTHOR_NAME, AUTHOR_URL, GITHUB_URL,
     ICON_ICO_PATH, get_autostart_enabled, set_autostart_enabled,
-    is_windows_light_theme
+    is_windows_light_theme, save_config
 )
+from updater import UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart
+
 
 def _ensure_checkmark_icon() -> str:
     icon_path = os.path.join(tempfile.gettempdir(), "ipwidget_checkmark_v1.png")
@@ -33,12 +38,15 @@ def _ensure_checkmark_icon() -> str:
 class SettingsDialog(QDialog):
     settings_changed = pyqtSignal(dict)
 
-    def __init__(self, current_cfg: dict, parent=None):
+    def __init__(self, current_cfg: dict, parent=None, pending_update: dict | None = None):
         super().__init__(parent)
         self.cfg = current_cfg.copy()
+        self.pending_update = pending_update
+        self.check_worker = None
+        self.download_worker = None
         self.check_icon_path = _ensure_checkmark_icon()
         self.setWindowTitle(f"{APP_NAME} — Настройки")
-        self.setFixedWidth(345)
+        self.setFixedWidth(350)
         self.setWindowFlags(
             (self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
             | Qt.WindowType.WindowStaysOnTopHint
@@ -48,6 +56,9 @@ class SettingsDialog(QDialog):
 
         self._init_ui()
         self._apply_theme()
+
+        if self.pending_update and self.pending_update.get("has_update"):
+            self._prompt_update(self.pending_update)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -150,17 +161,35 @@ class SettingsDialog(QDialog):
         self.autostart_cb.setChecked(get_autostart_enabled())
         layout.addWidget(self.autostart_cb)
 
+        # Прогресс-бар для скачивания обновления (скрыт по умолчанию)
+        self.update_progress = QProgressBar()
+        self.update_progress.setRange(0, 100)
+        self.update_progress.setTextVisible(True)
+        self.update_progress.setFormat("Загрузка обновления: %p%")
+        self.update_progress.setFixedHeight(16)
+        self.update_progress.hide()
+        layout.addWidget(self.update_progress)
+
         # Кнопки
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 3, 0, 1)
+
+        self.check_upd_btn = QPushButton("Проверить обновления")
+        self.check_upd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.check_upd_btn.clicked.connect(self._on_check_updates)
+        btn_row.addWidget(self.check_upd_btn)
+
         btn_row.addStretch()
+
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
+
         save_btn = QPushButton("Сохранить")
         save_btn.setObjectName("primaryBtn")
         save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._on_save)
+
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(save_btn)
         layout.addLayout(btn_row)
@@ -184,6 +213,97 @@ class SettingsDialog(QDialog):
         footer_row.addStretch()
         footer_row.addWidget(self.author_label)
         layout.addLayout(footer_row)
+
+    def _on_check_updates(self):
+        if self.check_worker and self.check_worker.isRunning():
+            return
+        self.check_upd_btn.setEnabled(False)
+        self.check_upd_btn.setText("Проверка...")
+        self.check_worker = UpdateCheckWorker()
+        self.check_worker.finished_check.connect(self._on_check_finished)
+        self.check_worker.start()
+
+    def _on_check_finished(self, info: dict | None, error: str):
+        self.check_upd_btn.setEnabled(True)
+        self.check_upd_btn.setText("Проверить обновления")
+
+        if error or not info:
+            QMessageBox.warning(
+                self,
+                f"{APP_NAME} — Обновления",
+                f"Не удалось проверить обновления.\nПроверьте подключение к интернету.\n\nДетали: {error}"
+            )
+            return
+
+        self.cfg["last_update_check"] = int(time.time())
+        save_config(self.cfg)
+
+        if not info.get("has_update"):
+            QMessageBox.information(
+                self,
+                f"{APP_NAME} — Обновления",
+                f"У вас установлена актуальная версия (v{APP_VERSION})."
+            )
+            return
+
+        self._prompt_update(info)
+
+    def _prompt_update(self, info: dict):
+        new_ver = info.get("version", "")
+        notes = info.get("notes", "")
+        short_notes = (notes[:320] + "…") if len(notes) > 320 else notes
+        msg = f"Доступна новая версия {APP_NAME} v{new_ver} (текущая: v{APP_VERSION})."
+        if short_notes:
+            msg += f"\n\nЧто нового:\n{short_notes}"
+        msg += "\n\nСкачать и установить обновление сейчас?"
+
+        reply = QMessageBox.question(
+            self,
+            f"{APP_NAME} — Доступно обновление",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        exe_url = info.get("exe_url", "")
+        if not exe_url:
+            html_url = info.get("html_url") or f"{GITHUB_URL}/releases/latest"
+            QDesktopServices.openUrl(QUrl(html_url))
+            return
+
+        self._start_download(exe_url)
+
+    def _start_download(self, exe_url: str):
+        self.check_upd_btn.setEnabled(False)
+        self.update_progress.setValue(0)
+        self.update_progress.show()
+        self.adjustSize()
+
+        self.download_worker = UpdateDownloadWorker(exe_url)
+        self.download_worker.progress.connect(self.update_progress.setValue)
+        self.download_worker.finished_download.connect(self._on_download_finished)
+        self.download_worker.start()
+
+    def _on_download_finished(self, file_path: str, error: str):
+        self.update_progress.hide()
+        self.check_upd_btn.setEnabled(True)
+        self.adjustSize()
+
+        if error or not file_path:
+            QMessageBox.critical(
+                self,
+                f"{APP_NAME} — Ошибка загрузки",
+                f"Не удалось скачать обновление:\n{error}"
+            )
+            return
+
+        restarting, info_msg = apply_update_and_restart(file_path)
+        if restarting:
+            QApplication.quit()
+        else:
+            QMessageBox.information(self, f"{APP_NAME} — Обновление", info_msg)
 
     def _on_theme_preview(self):
         selected_theme = self.theme_items[self.theme_combo.currentIndex()][0]
@@ -246,6 +366,18 @@ class SettingsDialog(QDialog):
                 background-color: {border};
                 border: none;
                 max-height: 1px;
+            }}
+            QProgressBar {{
+                background-color: {ctrl_bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 5px;
+                text-align: center;
+                font-size: 10.5px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {accent};
+                border-radius: 4px;
             }}
             QSlider {{
                 min-height: 20px;
@@ -319,12 +451,15 @@ class SettingsDialog(QDialog):
                 color: {fg};
                 border: 1px solid {border};
                 border-radius: 5px;
-                padding: 5px 13px;
+                padding: 5px 11px;
                 font-weight: 500;
             }}
             QPushButton:hover {{
                 background-color: {ctrl_hover};
                 border-color: {accent};
+            }}
+            QPushButton:disabled {{
+                color: {sub_fg};
             }}
             QPushButton#primaryBtn {{
                 background-color: {accent};
