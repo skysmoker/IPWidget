@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
@@ -308,9 +308,7 @@ class IPWidget(QWidget):
     def _show_hover_card(self):
         if not self.isVisible() or not self.current_ip or self._dragging:
             return
-        self.hover_card.update_content(
-            self.current_isp, self.current_ping, self.current_timezone, self._is_light()
-        )
+        self.hover_card.update_content(self.current_isp, self.current_ping, self.current_timezone, self._is_light(), bool(self.cfg.get("mask_ip", False)))
         pos = calculate_hover_card_pos(
             self.frameGeometry(),
             self.hover_card.sizeHint().width(),

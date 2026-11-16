@@ -116,8 +116,12 @@ def apply_update_and_restart(new_exe_path: str) -> tuple[bool, str]:
 
     bat_content = f"""@echo off
 chcp 65001 >nul
+set "PYINSTALLER_RESET_ENVIRONMENT=1"
 set "_MEIPASS="
 set "_MEIPASS2="
+set "_PYI_PARENT_PROCESS_LEVEL="
+set "_PYI_ARCHIVE_FILE="
+set "_PYI_SPLASH_IPC="
 
 :waitloop
 tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
@@ -146,9 +150,11 @@ del "%~f0"
         with open(bat_path, "w", encoding="utf-8") as f:
             f.write(bat_content)
 
-        clean_env = os.environ.copy()
-        clean_env.pop("_MEIPASS", None)
-        clean_env.pop("_MEIPASS2", None)
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("_PYI_") and not k.startswith("_MEIPASS")
+        }
+        clean_env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
 
         CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(
@@ -160,6 +166,7 @@ del "%~f0"
         return True, ""
     except Exception as e:
         return False, f"Ошибка запуска установщика: {e}"
+
 
 class SilentUpdateWatcher(QObject):
     update_available = pyqtSignal(dict)

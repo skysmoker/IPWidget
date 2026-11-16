@@ -1,10 +1,10 @@
-import os
+﻿import os
 import json
 import sys
 import winreg
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.4.3"
+APP_VERSION = "0.4.35"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"
@@ -123,3 +123,4 @@ def set_autostart_enabled(enable: bool):
                     pass
     except Exception:
         pass
+
