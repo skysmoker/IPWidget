@@ -2,10 +2,19 @@ import os
 import ctypes
 import winreg
 from ctypes import wintypes
+from PyQt6.QtCore import QObject, QAbstractNativeEventFilter, pyqtSignal
 from config import APP_NAME, ICON_ICO_PATH
 
 user32 = ctypes.windll.user32
 MONITOR_DEFAULTTONEAREST = 2
+
+WM_POWERBROADCAST = 0x0218
+PBT_APMRESUMESUSPEND = 0x0007
+PBT_APMRESUMEAUTOMATIC = 0x0012
+
+WM_WTSSESSION_CHANGE = 0x02B1
+WTS_SESSION_UNLOCK = 0x8
+NOTIFY_FOR_THIS_SESSION = 0
 
 
 class RECT(ctypes.Structure):
@@ -81,3 +90,43 @@ def is_other_app_fullscreen(ignore_hwnds: set[int]) -> bool:
         )
     except Exception:
         return False
+
+
+class SessionPowerWatcher(QObject, QAbstractNativeEventFilter):
+    """Отслеживает выход Windows из сна и разблокировку экрана."""
+    resumed_or_unlocked = pyqtSignal()
+
+    def __init__(self, hwnd: int, parent=None):
+        QObject.__init__(self, parent)
+        QAbstractNativeEventFilter.__init__(self)
+        self._hwnd = hwnd
+        self._registered = False
+        try:
+            res = ctypes.windll.wtsapi32.WTSRegisterSessionNotification(
+                wintypes.HWND(hwnd), NOTIFY_FOR_THIS_SESSION
+            )
+            self._registered = bool(res)
+        except Exception:
+            pass
+
+    def nativeEventFilter(self, eventType, message):
+        if eventType in (b"windows_generic_MSG", b"windows_dispatcher_MSG"):
+            try:
+                msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
+                if msg.message == WM_POWERBROADCAST and msg.wParam in (
+                    PBT_APMRESUMESUSPEND, PBT_APMRESUMEAUTOMATIC
+                ):
+                    self.resumed_or_unlocked.emit()
+                elif msg.message == WM_WTSSESSION_CHANGE and msg.wParam == WTS_SESSION_UNLOCK:
+                    self.resumed_or_unlocked.emit()
+            except Exception:
+                pass
+        return False, 0
+
+    def cleanup(self):
+        if self._registered and self._hwnd:
+            try:
+                ctypes.windll.wtsapi32.WTSUnRegisterSessionNotification(wintypes.HWND(self._hwnd))
+            except Exception:
+                pass
+            self._registered = False

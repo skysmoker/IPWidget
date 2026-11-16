@@ -16,10 +16,16 @@ from settings_ui import SettingsDialog
 from hover_card import HoverCard
 from tray import WidgetTray
 from updater import SilentUpdateWatcher
+from styles import get_card_stylesheet
+from positioning import (
+    mask_ip_address, snap_to_edges, calculate_widget_pos,
+    calculate_hover_card_pos, calculate_dialog_pos
+)
 from win_utils import (
     register_app_user_model_id,
     acquire_single_instance_mutex,
-    is_other_app_fullscreen
+    is_other_app_fullscreen,
+    SessionPowerWatcher
 )
 
 
@@ -51,6 +57,9 @@ class IPWidget(QWidget):
         self.manually_hidden = False
         self.hidden_by_fullscreen = False
         self._is_hovered = False
+        self._copy_feedback_active = False
+        self._dragging = False
+        self._drag_offset = QPoint()
 
         self.hover_card = HoverCard()
         self.hover_timer = QTimer(self)
@@ -62,7 +71,6 @@ class IPWidget(QWidget):
         self._init_services()
         self._apply_window_flags(initial=True)
         self._apply_theme_and_scale()
-        self._position_window()
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.fetch_ip)
@@ -134,6 +142,14 @@ class IPWidget(QWidget):
         self.update_watcher = SilentUpdateWatcher(self.cfg, self)
         self.update_watcher.update_available.connect(self._on_update_found)
 
+        self.session_watcher = SessionPowerWatcher(int(self.winId()), self)
+        self.session_watcher.resumed_or_unlocked.connect(
+            lambda: QTimer.singleShot(1500, self.fetch_ip)
+        )
+        app = QApplication.instance()
+        if app:
+            app.installNativeEventFilter(self.session_watcher)
+
     def _on_update_found(self, info: dict):
         self.pending_update = info
         self.tray.notify_update_available(info.get("version", ""))
@@ -141,6 +157,22 @@ class IPWidget(QWidget):
     def _is_light(self) -> bool:
         theme = self.cfg.get("theme", "system")
         return is_windows_light_theme() if theme == "system" else (theme == "light")
+
+    def _displayed_ip_text(self) -> str:
+        if not self.current_ip:
+            return "Загрузка..."
+        if self.cfg.get("mask_ip", False) and not (self._is_hovered or self._dragging):
+            return mask_ip_address(self.current_ip)
+        return self.current_ip
+
+    def _refresh_ip_label_text(self, resize_window: bool = True):
+        if self._copy_feedback_active or not self.current_ip:
+            return
+        new_text = self._displayed_ip_text()
+        if self.ip_label.text() != new_text:
+            self.ip_label.setText(new_text)
+            if resize_window:
+                self._position_window()
 
     def _apply_window_flags(self, initial: bool = False):
         flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
@@ -158,46 +190,20 @@ class IPWidget(QWidget):
         self.flag_label.setFixedSize(max(15, int(round(20 * scale))), max(10, int(round(14 * scale))))
 
         self._update_card_style()
+        self._refresh_ip_label_text(resize_window=False)
         self._position_window()
 
     def _update_card_style(self):
         base_opacity = float(self.cfg.get("opacity", 0.88))
-        self.setWindowOpacity(min(1.0, base_opacity + 0.08) if self._is_hovered else base_opacity)
-
-        if self._is_light():
-            bg = "rgba(255, 255, 255, 252)" if self._is_hovered else "rgba(255, 255, 255, 238)"
-            border = "#3b82f6" if self._is_hovered else "#cbd5e1"
-            fg, sub_fg = "#0f172a", "#475569"
-        else:
-            bg = "rgba(34, 34, 40, 248)" if self._is_hovered else "rgba(24, 24, 27, 238)"
-            border = "#60a5fa" if self._is_hovered else "#3f3f46"
-            fg, sub_fg = "#f4f4f5", "#a1a1aa"
-
-        self.card.setStyleSheet(f"""
-            QWidget#mainCard {{
-                background-color: {bg};
-                border: 1px solid {border};
-                border-radius: 12px;
-            }}
-            QLabel#locLabel {{
-                color: {sub_fg};
-                font-family: "Segoe UI", sans-serif;
-                font-size: {self._loc_px}px;
-                font-weight: 600;
-            }}
-            QLabel#ipLabel {{
-                color: {fg};
-                font-family: "Segoe UI", sans-serif;
-                font-size: {self._ip_px}px;
-                font-weight: 700;
-            }}
-            QLabel#statusDot {{
-                color: #22c55e;
-                font-size: {max(9, self._loc_px - 2)}px;
-            }}
-        """)
+        active = self._is_hovered or self._dragging
+        self.setWindowOpacity(min(1.0, base_opacity + 0.08) if active else base_opacity)
+        self.card.setStyleSheet(
+            get_card_stylesheet(self._is_light(), active, self._loc_px, self._ip_px)
+        )
 
     def _position_window(self):
+        old_w, old_h = self.width(), self.height()
+
         self.card.setMinimumSize(0, 0)
         self.card.setMaximumSize(16777215, 16777215)
         self.setMinimumSize(0, 0)
@@ -208,16 +214,7 @@ class IPWidget(QWidget):
         w, h = self.sizeHint().width(), self.sizeHint().height()
         self.setFixedSize(w, h)
 
-        screen = QApplication.primaryScreen()
-        if not screen:
-            return
-        geo = screen.availableGeometry()
-        margin = 6
-        pos = self.cfg.get("position", "bottom-right")
-
-        x = (geo.left() + margin) if pos.endswith("left") else (geo.right() - w - margin)
-        y = (geo.top() + margin) if pos.startswith("top") else (geo.bottom() - h - margin)
-        self.move(x, y)
+        self.move(calculate_widget_pos(self.cfg, w, h, old_w, old_h))
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -258,7 +255,8 @@ class IPWidget(QWidget):
 
         short_city = (new_city[:21] + "…") if len(new_city) > 22 else new_city
         self.location_label.setText(f"{new_alpha3} — {short_city}" if short_city else new_alpha3)
-        self.ip_label.setText(new_ip)
+        if not self._copy_feedback_active:
+            self.ip_label.setText(self._displayed_ip_text())
         self._position_window()
 
         loc_desc = f"{new_alpha3}, {new_city}" if new_city else new_alpha3
@@ -274,7 +272,7 @@ class IPWidget(QWidget):
                 if not self.manually_hidden:
                     self.show()
             return
-        if self.manually_hidden:
+        if self.manually_hidden or self._dragging:
             return
 
         ignore = {int(self.winId()), int(self.hover_card.winId())}
@@ -292,49 +290,91 @@ class IPWidget(QWidget):
     def enterEvent(self, event):
         self._is_hovered = True
         self._update_card_style()
-        if self.current_ip:
+        if self.cfg.get("mask_ip", False):
+            self._refresh_ip_label_text(resize_window=True)
+        if self.current_ip and not self._dragging:
             self.hover_timer.start()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self._is_hovered = False
         self._update_card_style()
+        if self.cfg.get("mask_ip", False):
+            self._refresh_ip_label_text(resize_window=True)
         self.hover_timer.stop()
         self.hover_card.hide()
         super().leaveEvent(event)
 
     def _show_hover_card(self):
-        if not self.isVisible() or not self.current_ip:
+        if not self.isVisible() or not self.current_ip or self._dragging:
             return
         self.hover_card.update_content(
             self.current_isp, self.current_ping, self.current_timezone, self._is_light()
         )
-        w_geo = self.frameGeometry()
-        c_w, c_h = self.hover_card.sizeHint().width(), self.hover_card.sizeHint().height()
-        pos = self.cfg.get("position", "bottom-right")
-
-        y = (w_geo.bottom() - 4) if pos.startswith("top") else (w_geo.top() - c_h + 4)
-        x = w_geo.left() if pos.endswith("left") else (w_geo.right() - c_w)
-        self.hover_card.move(QPoint(x, y))
+        pos = calculate_hover_card_pos(
+            self.frameGeometry(),
+            self.hover_card.sizeHint().width(),
+            self.hover_card.sizeHint().height(),
+            self.cfg.get("position", "bottom-right")
+        )
+        self.hover_card.move(pos)
         self.hover_card.show()
 
     def mousePressEvent(self, event):
+        is_middle = event.button() == Qt.MouseButton.MiddleButton
+        is_alt_left = (
+            event.button() == Qt.MouseButton.LeftButton
+            and bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+        )
+        if is_middle or is_alt_left:
+            self._dragging = True
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self.hover_timer.stop()
+            self.hover_card.hide()
+            self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+            self._update_card_style()
+            event.accept()
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
             self._copy_ip_to_clipboard()
         elif event.button() == Qt.MouseButton.RightButton:
             self._open_settings()
 
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            target = event.globalPosition().toPoint() - self._drag_offset
+            self.move(snap_to_edges(target.x(), target.y(), self.width(), self.height()))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging and event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton):
+            self._dragging = False
+            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self._update_card_style()
+
+            self.cfg["position"] = "custom"
+            self.cfg["custom_x"] = self.x()
+            self.cfg["custom_y"] = self.y()
+            save_config(self.cfg)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
     def _copy_ip_to_clipboard(self):
         if not self.current_ip:
             return
         QApplication.clipboard().setText(self.current_ip)
-        old_text = self.ip_label.text()
+        self._copy_feedback_active = True
         self.ip_label.setText("Скопировано!")
         self._position_window()
-        QTimer.singleShot(1100, lambda: self._restore_ip_text(old_text))
+        QTimer.singleShot(1100, self._restore_ip_text)
 
-    def _restore_ip_text(self, text: str):
-        self.ip_label.setText(self.current_ip if self.current_ip else text)
+    def _restore_ip_text(self):
+        self._copy_feedback_active = False
+        self.ip_label.setText(self._displayed_ip_text())
         self._position_window()
 
     def _toggle_visibility(self):
@@ -359,23 +399,8 @@ class IPWidget(QWidget):
 
         dlg = SettingsDialog(self.cfg, self, pending_update=pending)
         dlg.settings_changed.connect(self._on_settings_saved)
-
         dlg.adjustSize()
-        d_w, d_h = dlg.sizeHint().width(), dlg.sizeHint().height()
-        w_geo = self.frameGeometry()
-        screen = QApplication.primaryScreen()
-        if screen:
-            s_geo = screen.availableGeometry()
-            margin = 8
-            x = (w_geo.right() - d_w) if w_geo.center().x() > s_geo.center().x() else w_geo.left()
-            x = max(s_geo.left() + margin, min(x, s_geo.right() - d_w - margin))
-
-            if w_geo.top() - d_h - margin >= s_geo.top():
-                y = w_geo.top() - d_h - margin
-            else:
-                y = min(w_geo.bottom() + margin, s_geo.bottom() - d_h - margin)
-            dlg.move(QPoint(x, y))
-
+        dlg.move(calculate_dialog_pos(self.frameGeometry(), dlg.sizeHint().width(), dlg.sizeHint().height()))
         dlg.exec()
 
     def _on_settings_saved(self, new_cfg: dict):
@@ -387,6 +412,7 @@ class IPWidget(QWidget):
         self._position_window()
 
     def _quit_app(self):
+        self.session_watcher.cleanup()
         self.hover_card.hide()
         self.tray.hide()
         QApplication.quit()

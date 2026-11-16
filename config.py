@@ -4,7 +4,7 @@ import sys
 import winreg
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"
@@ -34,17 +34,19 @@ DEFAULT_CONFIG = {
     "opacity": 0.88,
     "scale": 100,
     "position": "bottom-right",
+    "custom_x": None,
+    "custom_y": None,
     "interval": 15,
     "theme": "system",
     "notify_on_change": True,
     "always_on_top": True,
+    "mask_ip": False,
     "last_update_check": 0,
     "apis": DEFAULT_APIS.copy()
 }
 
 
 def load_config() -> dict:
-    # Миграция настроек из старой папки рядом с .exe в %APPDATA%\IPWidget
     source_path = CONFIG_PATH if os.path.exists(CONFIG_PATH) else LEGACY_CONFIG_PATH
     if os.path.exists(source_path):
         try:
