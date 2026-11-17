@@ -4,6 +4,27 @@
 
 Лёгкий и минималистичный десктопный виджет для Windows на Python и PyQt6. Отображает ваш текущий внешний IP-адрес, флаг страны, город и индикатор состояния сети прямо поверх рабочего стола.
 
+<table align="center">
+  <tr>
+    <td rowspan="2" align="center" valign="middle">
+      <img width="364" height="512" alt="screen-04" src="https://github.com/user-attachments/assets/a85712b6-24b4-41b2-b055-fdf2f444dbc0" />
+    </td>
+    <td align="center" valign="middle">
+      <img width="145" height="54" alt="screen-01" src="https://github.com/user-attachments/assets/51f629e0-f654-4cf0-98e3-1bd3da01566c" />
+      &nbsp;
+      <img width="205" height="54" alt="screen-02" src="https://github.com/user-attachments/assets/4160ab00-a502-4593-91eb-f7de67600783" />
+      &nbsp;
+      <img width="152" height="54" alt="screen-03" src="https://github.com/user-attachments/assets/fde9bf83-6a7e-4293-9e17-40963c21b8e7" />
+      &nbsp;
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <img width="183" height="154" alt="screen-06" src="https://github.com/user-attachments/assets/d8ccb10a-9629-4440-acb4-2f24045e9499" />
+    </td>
+  </tr>
+</table>
+
 ## Основные возможности
 
 - **Внешний IP и геолокация:** Показывает публичный IPv4-адрес, флаг страны, трёхбуквенный код страны (ISO3) и город с автоматическим переключением между резервными API (`ipwho.is`, `ip-api.com`, `geojs.io`, `ipinfo.io`).
