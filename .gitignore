@@ -6,3 +6,6 @@ __pycache__/
 *.spec
 flags/
 config.json
+
+*.exe
+test_*/
