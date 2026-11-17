@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsDropShadowEffect
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
+from i18n import t
 
 
 def _mask_ipv6(addr: str) -> str:
@@ -46,7 +47,7 @@ class HoverCard(QWidget):
         self.tz_label = QLabel()
         self.tz_label.setObjectName("detailRow")
 
-        self.privacy_label = QLabel("🔒 Приватный режим (IP скрыт до наведения)")
+        self.privacy_label = QLabel()
         self.privacy_label.setObjectName("privacyRow")
         self.privacy_label.hide()
 
@@ -75,15 +76,15 @@ class HoverCard(QWidget):
         iface: str = "",
         ipv6: str = ""
     ):
-        isp_text = isp if isp else "Неизвестно"
+        isp_text = isp if isp else t("unknown")
         if len(isp_text) > 34:
             isp_text = isp_text[:33] + "…"
-        ping_text = f"{ping_ms} мс" if ping_ms is not None else "—"
+        ping_text = t("ping_ms", ms=ping_ms) if ping_ms is not None else "—"
         tz_text = timezone if timezone else "—"
 
-        self.isp_label.setText(f"Провайдер: {isp_text}")
+        self.isp_label.setText(t("hover_isp", isp=isp_text))
         if iface:
-            self.iface_label.setText(f"Интерфейс: {iface}")
+            self.iface_label.setText(t("hover_iface", iface=iface))
             self.iface_label.show()
         else:
             self.iface_label.hide()
@@ -97,8 +98,9 @@ class HoverCard(QWidget):
         else:
             self.ipv6_label.hide()
 
-        self.ping_label.setText(f"Пинг: {ping_text}")
-        self.tz_label.setText(f"Часовой пояс: {tz_text}")
+        self.ping_label.setText(t("hover_ping", ping=ping_text))
+        self.tz_label.setText(t("hover_tz", tz=tz_text))
+        self.privacy_label.setText(t("hover_privacy"))
         self.privacy_label.setVisible(is_private)
 
         if is_light:

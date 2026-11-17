@@ -2,9 +2,10 @@
 import json
 import sys
 import winreg
+from i18n import get_system_language
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"
@@ -32,6 +33,7 @@ DEFAULT_APIS = [
 ]
 
 DEFAULT_CONFIG = {
+    "language": get_system_language(),
     "opacity": 0.88,
     "scale": 100,
     "position": "bottom-right",
@@ -56,6 +58,8 @@ def load_config() -> dict:
             with open(source_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 merged = {**DEFAULT_CONFIG, **data}
+                if merged.get("language") not in ("ru", "en"):
+                    merged["language"] = get_system_language()
                 saved_apis = merged.get("apis", [])
                 if not saved_apis or saved_apis[0].startswith("https://api.country.is"):
                     merged["apis"] = DEFAULT_APIS.copy()

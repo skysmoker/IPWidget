@@ -28,6 +28,7 @@ from win_utils import (
     SessionPowerWatcher,
     get_user_idle_seconds
 )
+from i18n import t, set_language
 
 
 def _ping_status_color(ping_ms: int | None) -> str:
@@ -55,16 +56,20 @@ class IPWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.cfg = load_config()
+        set_language(self.cfg.get("language", "ru"))
+
         if get_autostart_enabled():
             set_autostart_enabled(True)
 
         self.current_ip = ""
         self.current_ipv6 = ""
         self.current_alpha3 = ""
+        self.current_city = ""
         self.current_isp = ""
         self.current_iface = ""
         self.current_ping = None
         self.current_timezone = ""
+        self._last_fetch_failed = False
         self.worker = None
         self.pending_update = None
         self.manually_hidden = False
@@ -133,7 +138,7 @@ class IPWidget(QWidget):
         top_row.addWidget(self.location_label)
         top_row.addStretch()
 
-        self.ip_label = QLabel("Загрузка...")
+        self.ip_label = QLabel(t("loading"))
         self.ip_label.setObjectName("ipLabel")
         self.ip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -181,13 +186,13 @@ class IPWidget(QWidget):
 
     def _displayed_ip_text(self) -> str:
         if not self.current_ip:
-            return "Загрузка..."
+            return t("offline") if self._last_fetch_failed else t("loading")
         if self.cfg.get("mask_ip", False) and not (self._is_hovered or self._dragging):
             return mask_ip_address(self.current_ip)
         return self.current_ip
 
     def _refresh_ip_label_text(self, resize_window: bool = True):
-        if self._copy_feedback_active or not self.current_ip:
+        if self._copy_feedback_active:
             return
         new_text = self._displayed_ip_text()
         if self.ip_label.text() != new_text:
@@ -275,12 +280,14 @@ class IPWidget(QWidget):
 
     def _on_ip_result(self, info: dict | None):
         if not info:
+            self._last_fetch_failed = True
             self.status_dot.setStyleSheet("color: #ef4444;")
             if not self.current_ip:
-                self.ip_label.setText("Нет сети")
+                self.ip_label.setText(t("offline"))
                 self._position_window()
             return
 
+        self._last_fetch_failed = False
         new_ip, new_alpha3 = info["ip"], info["alpha3"]
         new_city = info.get("city", "")
         self.current_ipv6 = info.get("ipv6", "")
@@ -295,7 +302,7 @@ class IPWidget(QWidget):
         changed = bool(self.current_ip) and (
             new_ip != self.current_ip or new_alpha3 != self.current_alpha3
         )
-        self.current_ip, self.current_alpha3 = new_ip, new_alpha3
+        self.current_ip, self.current_alpha3, self.current_city = new_ip, new_alpha3, new_city
 
         flag_path = info.get("flag_path", "")
         if flag_path and os.path.exists(flag_path):
@@ -424,7 +431,7 @@ class IPWidget(QWidget):
             return
         QApplication.clipboard().setText(self.current_ip)
         self._copy_feedback_active = True
-        self.ip_label.setText("Скопировано!")
+        self.ip_label.setText(t("copied"))
         self._position_window()
         QTimer.singleShot(1100, self._restore_ip_text)
 
@@ -433,7 +440,7 @@ class IPWidget(QWidget):
             return
         QApplication.clipboard().setText(self.current_ipv6)
         self._copy_feedback_active = True
-        self.ip_label.setText("IPv6 скопирован!")
+        self.ip_label.setText(t("copied_ipv6"))
         self._position_window()
         QTimer.singleShot(1100, self._restore_ip_text)
 
@@ -470,7 +477,17 @@ class IPWidget(QWidget):
 
     def _on_settings_saved(self, new_cfg: dict):
         self.cfg = new_cfg
+        set_language(self.cfg.get("language", "ru"))
         save_config(self.cfg)
+
+        self.tray.retranslate_ui(
+            visible=not self.manually_hidden,
+            has_ip=bool(self.current_ip)
+        )
+        if self.current_ip:
+            loc_desc = f"{self.current_alpha3}, {self.current_city}" if self.current_city else self.current_alpha3
+            self.tray.update_status(self.current_ip, loc_desc, self.current_ipv6)
+
         self.poll_timer.setInterval(int(self.cfg["interval"]) * 1000)
         self._apply_window_flags(initial=False)
         self._apply_theme_and_scale()

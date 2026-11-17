@@ -14,6 +14,7 @@ from config import (
 )
 from styles import ensure_checkmark_icon, get_settings_stylesheet
 from updater import UpdateCheckWorker, UpdateDownloadWorker, apply_update_and_restart
+from i18n import t, set_language
 
 
 class SettingsDialog(QDialog):
@@ -26,8 +27,8 @@ class SettingsDialog(QDialog):
         self.check_worker = None
         self.download_worker = None
         self.check_icon_path = ensure_checkmark_icon()
-        self.setWindowTitle(f"{APP_NAME} — Настройки")
-        self.setFixedWidth(355)
+        self.setWindowTitle(t("settings_title", app=APP_NAME))
+        self.setFixedWidth(365)
         self.setWindowFlags(
             (self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
             | Qt.WindowType.WindowStaysOnTopHint
@@ -46,9 +47,27 @@ class SettingsDialog(QDialog):
         layout.setSpacing(8)
         layout.setContentsMargins(16, 14, 16, 11)
 
+        # Язык интерфейса
+        lang_row = QHBoxLayout()
+        lang_row.addWidget(QLabel(t("settings_language")))
+        self.lang_combo = QComboBox()
+        self.lang_items = [
+            ("ru", t("lang_ru")),
+            ("en", t("lang_en")),
+        ]
+        for _, title in self.lang_items:
+            self.lang_combo.addItem(title)
+        l_idx = next(
+            (i for i, (k, _) in enumerate(self.lang_items) if k == self.cfg.get("language", "ru")),
+            0
+        )
+        self.lang_combo.setCurrentIndex(l_idx)
+        lang_row.addWidget(self.lang_combo)
+        layout.addLayout(lang_row)
+
         # Прозрачность
         op_row = QHBoxLayout()
-        op_row.addWidget(QLabel("Прозрачность окна:"))
+        op_row.addWidget(QLabel(t("settings_opacity")))
         self.op_val_label = QLabel(f"{int(self.cfg['opacity'] * 100)}%")
         self.op_val_label.setObjectName("valueLabel")
         self.op_val_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -63,7 +82,7 @@ class SettingsDialog(QDialog):
 
         # Масштаб
         sc_row = QHBoxLayout()
-        sc_row.addWidget(QLabel("Масштаб виджета:"))
+        sc_row.addWidget(QLabel(t("settings_scale")))
         self.sc_val_label = QLabel(f"{self.cfg['scale']}%")
         self.sc_val_label.setObjectName("valueLabel")
         self.sc_val_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -78,14 +97,14 @@ class SettingsDialog(QDialog):
 
         # Позиция отображения
         pos_row = QHBoxLayout()
-        pos_row.addWidget(QLabel("Позиция отображения:"))
+        pos_row.addWidget(QLabel(t("settings_pos")))
         self.pos_combo = QComboBox()
         self.pos_items = [
-            ("bottom-right", "Снизу справа"),
-            ("bottom-left", "Снизу слева"),
-            ("top-right", "Сверху справа"),
-            ("top-left", "Сверху слева"),
-            ("custom", "Произвольная (Alt / СКМ)"),
+            ("bottom-right", t("pos_bottom_right")),
+            ("bottom-left", t("pos_bottom_left")),
+            ("top-right", t("pos_top_right")),
+            ("top-left", t("pos_top_left")),
+            ("custom", t("pos_custom")),
         ]
         for _, title in self.pos_items:
             self.pos_combo.addItem(title)
@@ -96,12 +115,12 @@ class SettingsDialog(QDialog):
 
         # Тема оформления
         theme_row = QHBoxLayout()
-        theme_row.addWidget(QLabel("Тема оформления:"))
+        theme_row.addWidget(QLabel(t("settings_theme")))
         self.theme_combo = QComboBox()
         self.theme_items = [
-            ("system", "Системная (Windows)"),
-            ("dark", "Тёмная"),
-            ("light", "Светлая"),
+            ("system", t("theme_system")),
+            ("dark", t("theme_dark")),
+            ("light", t("theme_light")),
         ]
         for _, title in self.theme_items:
             self.theme_combo.addItem(title)
@@ -113,7 +132,7 @@ class SettingsDialog(QDialog):
 
         # Период опроса
         int_row = QHBoxLayout()
-        int_row.addWidget(QLabel("Период проверки (сек):"))
+        int_row.addWidget(QLabel(t("settings_interval")))
         self.int_spin = QSpinBox()
         self.int_spin.setRange(5, 3600)
         self.int_spin.setValue(int(self.cfg["interval"]))
@@ -121,23 +140,23 @@ class SettingsDialog(QDialog):
         layout.addLayout(int_row)
 
         # Переключатели
-        self.mask_ip_cb = QCheckBox("Скрывать IP до наведения курсора (приватность)")
+        self.mask_ip_cb = QCheckBox(t("cb_mask_ip"))
         self.mask_ip_cb.setChecked(bool(self.cfg.get("mask_ip", False)))
         layout.addWidget(self.mask_ip_cb)
 
-        self.idle_pause_cb = QCheckBox("Пауза опросов при простое более 5 мин (AFK)")
+        self.idle_pause_cb = QCheckBox(t("cb_idle_pause"))
         self.idle_pause_cb.setChecked(bool(self.cfg.get("pause_on_idle", True)))
         layout.addWidget(self.idle_pause_cb)
 
-        self.on_top_cb = QCheckBox("Отображать поверх других окон\n(автоскрытие в полноэкранном режиме)")
+        self.on_top_cb = QCheckBox(t("cb_on_top"))
         self.on_top_cb.setChecked(bool(self.cfg.get("always_on_top", True)))
         layout.addWidget(self.on_top_cb)
 
-        self.notify_cb = QCheckBox("Уведомлять при смене IP или страны")
+        self.notify_cb = QCheckBox(t("cb_notify"))
         self.notify_cb.setChecked(bool(self.cfg.get("notify_on_change", True)))
         layout.addWidget(self.notify_cb)
 
-        self.autostart_cb = QCheckBox("Запускать вместе с Windows")
+        self.autostart_cb = QCheckBox(t("cb_autostart"))
         self.autostart_cb.setChecked(get_autostart_enabled())
         layout.addWidget(self.autostart_cb)
 
@@ -145,7 +164,7 @@ class SettingsDialog(QDialog):
         self.update_progress = QProgressBar()
         self.update_progress.setRange(0, 100)
         self.update_progress.setTextVisible(True)
-        self.update_progress.setFormat("Загрузка обновления: %p%")
+        self.update_progress.setFormat(t("upd_progress"))
         self.update_progress.setFixedHeight(16)
         self.update_progress.hide()
         layout.addWidget(self.update_progress)
@@ -154,18 +173,18 @@ class SettingsDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.setContentsMargins(0, 3, 0, 1)
 
-        self.check_upd_btn = QPushButton("Проверить обновления")
+        self.check_upd_btn = QPushButton(t("btn_check_upd"))
         self.check_upd_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.check_upd_btn.clicked.connect(self._on_check_updates)
         btn_row.addWidget(self.check_upd_btn)
 
         btn_row.addStretch()
 
-        cancel_btn = QPushButton("Отмена")
+        cancel_btn = QPushButton(t("btn_cancel"))
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
 
-        save_btn = QPushButton("Сохранить")
+        save_btn = QPushButton(t("btn_save"))
         save_btn.setObjectName("primaryBtn")
         save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._on_save)
@@ -198,19 +217,20 @@ class SettingsDialog(QDialog):
         if self.check_worker and self.check_worker.isRunning():
             return
         self.check_upd_btn.setEnabled(False)
-        self.check_upd_btn.setText("Проверка...")
+        self.check_upd_btn.setText(t("btn_checking"))
         self.check_worker = UpdateCheckWorker()
         self.check_worker.finished_check.connect(self._on_check_finished)
         self.check_worker.start()
 
     def _on_check_finished(self, info: dict | None, error: str):
         self.check_upd_btn.setEnabled(True)
-        self.check_upd_btn.setText("Проверить обновления")
+        self.check_upd_btn.setText(t("btn_check_upd"))
 
         if error or not info:
             QMessageBox.warning(
-                self, f"{APP_NAME} — Обновления",
-                f"Не удалось проверить обновления.\nПроверьте подключение к интернету.\n\nДетали: {error}"
+                self,
+                t("upd_dlg_title", app=APP_NAME),
+                t("upd_check_err", error=error)
             )
             return
 
@@ -219,8 +239,9 @@ class SettingsDialog(QDialog):
 
         if not info.get("has_update"):
             QMessageBox.information(
-                self, f"{APP_NAME} — Обновления",
-                f"У вас установлена актуальная версия (v{APP_VERSION})."
+                self,
+                t("upd_dlg_title", app=APP_NAME),
+                t("upd_up_to_date", ver=APP_VERSION)
             )
             return
 
@@ -230,13 +251,15 @@ class SettingsDialog(QDialog):
         new_ver = info.get("version", "")
         notes = info.get("notes", "")
         short_notes = (notes[:320] + "…") if len(notes) > 320 else notes
-        msg = f"Доступна новая версия {APP_NAME} v{new_ver} (текущая: v{APP_VERSION})."
+        msg = t("upd_avail_header", app=APP_NAME, new_ver=new_ver, cur_ver=APP_VERSION)
         if short_notes:
-            msg += f"\n\nЧто нового:\n{short_notes}"
-        msg += "\n\nСкачать и установить обновление сейчас?"
+            msg += "\n\n" + t("upd_whats_new", notes=short_notes)
+        msg += "\n\n" + t("upd_ask_install")
 
         reply = QMessageBox.question(
-            self, f"{APP_NAME} — Доступно обновление", msg,
+            self,
+            t("upd_avail_title", app=APP_NAME),
+            msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes
         )
@@ -265,14 +288,18 @@ class SettingsDialog(QDialog):
         self.adjustSize()
 
         if error or not file_path:
-            QMessageBox.critical(self, f"{APP_NAME} — Ошибка загрузки", f"Не удалось скачать обновление:\n{error}")
+            QMessageBox.critical(
+                self,
+                t("upd_dl_err_title", app=APP_NAME),
+                t("upd_dl_err_body", error=error)
+            )
             return
 
         restarting, info_msg = apply_update_and_restart(file_path)
         if restarting:
             QApplication.quit()
         else:
-            QMessageBox.information(self, f"{APP_NAME} — Обновление", info_msg)
+            QMessageBox.information(self, t("upd_info_title", app=APP_NAME), info_msg)
 
     def _on_theme_preview(self):
         self._apply_theme(self.theme_items[self.theme_combo.currentIndex()][0])
@@ -283,13 +310,16 @@ class SettingsDialog(QDialog):
         qss, link_color = get_settings_stylesheet(is_light, self.check_icon_path)
 
         self.author_label.setText(
-            f'© Иван Черкез · '
+            f'{t("author_prefix")} · '
             f'<a href="{AUTHOR_URL}" style="color: {link_color}; text-decoration: none; font-weight: 600;">@{AUTHOR_NAME}</a> · '
             f'<a href="{GITHUB_URL}" style="color: {link_color}; text-decoration: none; font-weight: 600;">GitHub</a>'
         )
         self.setStyleSheet(qss)
 
     def _on_save(self):
+        self.cfg["language"] = self.lang_items[self.lang_combo.currentIndex()][0]
+        set_language(self.cfg["language"])
+
         self.cfg["opacity"] = round(self.op_slider.value() / 100.0, 2)
         self.cfg["scale"] = self.sc_slider.value()
         self.cfg["position"] = self.pos_items[self.pos_combo.currentIndex()][0]

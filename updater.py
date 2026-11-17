@@ -6,6 +6,7 @@ import subprocess
 import requests
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 from config import APP_NAME, APP_VERSION, GITHUB_API_LATEST, save_config
+from i18n import t
 
 WEEKLY_CHECK_SECONDS = 7 * 24 * 60 * 60
 
@@ -106,9 +107,9 @@ def apply_update_and_restart(new_exe_path: str) -> tuple[bool, str]:
             if os.path.exists(dest):
                 os.remove(dest)
             os.replace(new_exe_path, dest)
-            return False, f"Запущена dev-версия (.py). Новый бинарник сохранён как:\n{dest}"
+            return False, t("upd_dev_saved", dest=dest)
         except Exception as e:
-            return False, f"Не удалось сохранить файл: {e}"
+            return False, t("upd_save_err", error=e)
 
     current_exe = os.path.abspath(sys.executable)
     pid = os.getpid()
@@ -165,7 +166,7 @@ del "%~f0"
         )
         return True, ""
     except Exception as e:
-        return False, f"Ошибка запуска установщика: {e}"
+        return False, t("upd_bat_err", error=e)
 
 
 class SilentUpdateWatcher(QObject):

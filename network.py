@@ -5,7 +5,7 @@ import ctypes
 from ctypes import wintypes
 import requests
 import pycountry
-from config import FLAGS_DIR
+from config import FLAGS_DIR, APP_NAME, APP_VERSION
 
 COUNTRY_OVERRIDES = {
     "RU": "RUS",
@@ -128,7 +128,7 @@ def fetch_ipv6() -> str:
         "https://api6.ipify.org",
         "https://v6.ident.me",
     )
-    headers = {"User-Agent": "IPWidget/0.5.0"}
+    headers = {"User-Agent": f"{APP_NAME}/{APP_VERSION}"}
     for url in endpoints:
         try:
             resp = requests.get(url, headers=headers, timeout=2.5)
@@ -180,7 +180,7 @@ def ensure_flag_png(iso2: str) -> str:
         ("svg", f"https://cdn.jsdelivr.net/gh/lipis/flag-icons@main/flags/4x3/{code}.svg"),
         ("svg", f"https://raw.githubusercontent.com/lipis/flag-icons/main/flags/4x3/{code}.svg"),
     ]
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) IPWidget/0.5.0"}
+    headers = {"User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) {APP_NAME}/{APP_VERSION}"}
 
     for ext, url in sources:
         try:
@@ -229,7 +229,7 @@ def _parse_response(data: dict) -> tuple[str, str, str, str, str]:
 
 
 def fetch_ip_info(api_urls: list) -> dict | None:
-    headers = {"User-Agent": "IPWidget/0.5.0"}
+    headers = {"User-Agent": f"{APP_NAME}/{APP_VERSION}"}
     for url in api_urls:
         try:
             t0 = time.perf_counter()
