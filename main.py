@@ -30,6 +30,16 @@ from win_utils import (
 )
 
 
+def _ping_status_color(ping_ms: int | None) -> str:
+    if ping_ms is None:
+        return "#22c55e"
+    if ping_ms < 120:
+        return "#22c55e"   # зелёный — низкая задержка
+    if ping_ms <= 350:
+        return "#f59e0b"   # янтарный — средняя задержка
+    return "#f97316"       # оранжевый — высокая задержка
+
+
 class IpWorker(QThread):
     result_ready = pyqtSignal(object)
 
@@ -49,6 +59,7 @@ class IPWidget(QWidget):
             set_autostart_enabled(True)
 
         self.current_ip = ""
+        self.current_ipv6 = ""
         self.current_alpha3 = ""
         self.current_isp = ""
         self.current_iface = ""
@@ -142,6 +153,7 @@ class IPWidget(QWidget):
         self.tray.toggle_requested.connect(self._toggle_visibility)
         self.tray.refresh_requested.connect(self.fetch_ip)
         self.tray.copy_requested.connect(self._copy_ip_to_clipboard)
+        self.tray.copy_ipv6_requested.connect(self._copy_ipv6_to_clipboard)
         self.tray.settings_requested.connect(self._open_settings)
         self.tray.quit_requested.connect(self._quit_app)
         self.tray.update_notice_clicked.connect(self._open_settings)
@@ -269,13 +281,16 @@ class IPWidget(QWidget):
                 self._position_window()
             return
 
-        self.status_dot.setStyleSheet("color: #64748b;" if self._is_afk_paused else "color: #22c55e;")
         new_ip, new_alpha3 = info["ip"], info["alpha3"]
         new_city = info.get("city", "")
+        self.current_ipv6 = info.get("ipv6", "")
         self.current_isp = info.get("isp", "")
         self.current_iface = info.get("iface", "")
         self.current_ping = info.get("ping_ms")
         self.current_timezone = info.get("timezone", "")
+
+        dot_color = "#64748b" if self._is_afk_paused else _ping_status_color(self.current_ping)
+        self.status_dot.setStyleSheet(f"color: {dot_color};")
 
         changed = bool(self.current_ip) and (
             new_ip != self.current_ip or new_alpha3 != self.current_alpha3
@@ -295,7 +310,7 @@ class IPWidget(QWidget):
         self._position_window()
 
         loc_desc = f"{new_alpha3}, {new_city}" if new_city else new_alpha3
-        self.tray.update_status(new_ip, loc_desc)
+        self.tray.update_status(new_ip, loc_desc, self.current_ipv6)
 
         if changed and self.cfg.get("notify_on_change", True):
             self.tray.notify_ip_change(new_ip, loc_desc)
@@ -349,7 +364,8 @@ class IPWidget(QWidget):
             self.current_timezone,
             self._is_light(),
             bool(self.cfg.get("mask_ip", False)),
-            self.current_iface
+            self.current_iface,
+            self.current_ipv6
         )
         pos = calculate_hover_card_pos(
             self.frameGeometry(),
@@ -409,6 +425,15 @@ class IPWidget(QWidget):
         QApplication.clipboard().setText(self.current_ip)
         self._copy_feedback_active = True
         self.ip_label.setText("Скопировано!")
+        self._position_window()
+        QTimer.singleShot(1100, self._restore_ip_text)
+
+    def _copy_ipv6_to_clipboard(self):
+        if not self.current_ipv6:
+            return
+        QApplication.clipboard().setText(self.current_ipv6)
+        self._copy_feedback_active = True
+        self.ip_label.setText("IPv6 скопирован!")
         self._position_window()
         QTimer.singleShot(1100, self._restore_ip_text)
 

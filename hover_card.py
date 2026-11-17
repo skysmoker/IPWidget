@@ -3,6 +3,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 
+def _mask_ipv6(addr: str) -> str:
+    parts = addr.split(":")
+    if len(parts) >= 3:
+        return f"{parts[0]}:{parts[1]}:••••:••••"
+    return "••••:••••"
+
+
 class HoverCard(QWidget):
     def __init__(self):
         super().__init__()
@@ -30,6 +37,9 @@ class HoverCard(QWidget):
         self.iface_label = QLabel()
         self.iface_label.setObjectName("detailRow")
 
+        self.ipv6_label = QLabel()
+        self.ipv6_label.setObjectName("detailRow")
+
         self.ping_label = QLabel()
         self.ping_label.setObjectName("detailRow")
 
@@ -42,6 +52,7 @@ class HoverCard(QWidget):
 
         box_layout.addWidget(self.isp_label)
         box_layout.addWidget(self.iface_label)
+        box_layout.addWidget(self.ipv6_label)
         box_layout.addWidget(self.ping_label)
         box_layout.addWidget(self.tz_label)
         box_layout.addWidget(self.privacy_label)
@@ -61,7 +72,8 @@ class HoverCard(QWidget):
         timezone: str,
         is_light: bool,
         is_private: bool = False,
-        iface: str = ""
+        iface: str = "",
+        ipv6: str = ""
     ):
         isp_text = isp if isp else "Неизвестно"
         if len(isp_text) > 34:
@@ -75,6 +87,15 @@ class HoverCard(QWidget):
             self.iface_label.show()
         else:
             self.iface_label.hide()
+
+        if ipv6:
+            shown_v6 = _mask_ipv6(ipv6) if is_private else ipv6
+            if len(shown_v6) > 28:
+                shown_v6 = shown_v6[:27] + "…"
+            self.ipv6_label.setText(f"IPv6: {shown_v6}")
+            self.ipv6_label.show()
+        else:
+            self.ipv6_label.hide()
 
         self.ping_label.setText(f"Пинг: {ping_text}")
         self.tz_label.setText(f"Часовой пояс: {tz_text}")

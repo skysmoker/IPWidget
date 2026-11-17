@@ -122,6 +122,26 @@ def get_active_interface_info() -> str:
     return local_ip
 
 
+def fetch_ipv6() -> str:
+    """Проверяет наличие внешнего IPv6-маршрута и возвращает адрес, если он активен."""
+    endpoints = (
+        "https://api6.ipify.org",
+        "https://v6.ident.me",
+    )
+    headers = {"User-Agent": "IPWidget/0.5.0"}
+    for url in endpoints:
+        try:
+            resp = requests.get(url, headers=headers, timeout=2.5)
+            if resp.status_code == 200:
+                candidate = resp.text.strip()
+                if ":" in candidate and len(candidate) <= 45:
+                    socket.inet_pton(socket.AF_INET6, candidate)
+                    return candidate
+        except Exception:
+            continue
+    return ""
+
+
 def iso2_to_iso3(iso2: str) -> str:
     if not iso2:
         return "UNK"
@@ -160,7 +180,7 @@ def ensure_flag_png(iso2: str) -> str:
         ("svg", f"https://cdn.jsdelivr.net/gh/lipis/flag-icons@main/flags/4x3/{code}.svg"),
         ("svg", f"https://raw.githubusercontent.com/lipis/flag-icons/main/flags/4x3/{code}.svg"),
     ]
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) IPWidget/0.4.4"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) IPWidget/0.5.0"}
 
     for ext, url in sources:
         try:
@@ -168,7 +188,6 @@ def ensure_flag_png(iso2: str) -> str:
             content = resp.content
             if resp.status_code != 200 or len(content) <= 100:
                 continue
-            # Отсекаем HTML-страницы блокировок/ошибок
             head = content[:64].lstrip().lower()
             if head.startswith(b"<!doctype") or head.startswith(b"<html"):
                 continue
@@ -180,6 +199,7 @@ def ensure_flag_png(iso2: str) -> str:
         except Exception:
             continue
     return ""
+
 
 def _parse_response(data: dict) -> tuple[str, str, str, str, str]:
     if data.get("status") == "fail":
@@ -209,7 +229,7 @@ def _parse_response(data: dict) -> tuple[str, str, str, str, str]:
 
 
 def fetch_ip_info(api_urls: list) -> dict | None:
-    headers = {"User-Agent": "IPWidget/0.4.4"}
+    headers = {"User-Agent": "IPWidget/0.5.0"}
     for url in api_urls:
         try:
             t0 = time.perf_counter()
@@ -222,6 +242,7 @@ def fetch_ip_info(api_urls: list) -> dict | None:
             if ip and iso2:
                 return {
                     "ip": ip,
+                    "ipv6": fetch_ipv6(),
                     "iso2": iso2.upper(),
                     "alpha3": iso2_to_iso3(iso2),
                     "city": city,

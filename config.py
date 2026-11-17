@@ -4,7 +4,7 @@ import sys
 import winreg
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.4.4"
+APP_VERSION = "0.5.0"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"
@@ -12,6 +12,7 @@ GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+RESOURCE_DIR = getattr(sys, "_MEIPASS", BASE_DIR)
 LEGACY_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 APPDATA_DIR = os.path.join(os.getenv("APPDATA") or BASE_DIR, APP_NAME)
@@ -19,8 +20,8 @@ os.makedirs(APPDATA_DIR, exist_ok=True)
 CONFIG_PATH = os.path.join(APPDATA_DIR, "config.json")
 
 FLAGS_DIR = os.path.join(APPDATA_DIR, "flags")
-ICON_PNG_PATH = os.path.join(BASE_DIR, "app.png")
-ICON_ICO_PATH = os.path.join(BASE_DIR, "app.ico")
+ICON_PNG_PATH = os.path.join(RESOURCE_DIR, "app.png")
+ICON_ICO_PATH = os.path.join(RESOURCE_DIR, "app.ico")
 
 DEFAULT_APIS = [
     "https://ipwho.is/",
