@@ -4,6 +4,27 @@
 
 A lightweight, minimalist Windows desktop widget built with Python and PyQt6 that displays your current public IP address, country flag, city, and connection status right on your screen.
 
+<table align="center">
+  <tr>
+    <td rowspan="2" align="center" valign="middle">
+      <img width="364" height="512" alt="screen-05" src="https://github.com/user-attachments/assets/4b7072a7-0d2f-49a7-a696-7634dd2fa72f" />
+    </td>
+    <td align="center" valign="middle">
+      <img width="145" height="54" alt="screen-01" src="https://github.com/user-attachments/assets/51f629e0-f654-4cf0-98e3-1bd3da01566c" />
+      &nbsp;
+      <img width="205" height="54" alt="screen-02" src="https://github.com/user-attachments/assets/4160ab00-a502-4593-91eb-f7de67600783" />
+      &nbsp;
+      <img width="152" height="54" alt="screen-03" src="https://github.com/user-attachments/assets/fde9bf83-6a7e-4293-9e17-40963c21b8e7" />
+      &nbsp;
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <img width="183" height="153" alt="screen-07" src="https://github.com/user-attachments/assets/809a95ac-1792-450c-97b5-cc751086b24e" />
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 - **Real-time IP & Geolocation:** Displays your public IPv4 address, country flag, ISO3 country code, and city using multiple fallback APIs (`ipwho.is`, `ip-api.com`, `geojs.io`, `ipinfo.io`).
