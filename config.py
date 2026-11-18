@@ -5,7 +5,7 @@ import winreg
 from i18n import get_system_language
 
 APP_NAME = "IPWidget"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 AUTHOR_NAME = "SkySmoker"
 AUTHOR_URL = "https://t.me/SkySmoker"
 GITHUB_REPO = "skysmoker/IPWidget"

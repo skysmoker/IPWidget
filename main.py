@@ -70,6 +70,7 @@ class IPWidget(QWidget):
         self.current_ping = None
         self.current_timezone = ""
         self._last_fetch_failed = False
+        self._fail_streak = 0
         self.worker = None
         self.pending_update = None
         self.manually_hidden = False
@@ -145,18 +146,18 @@ class IPWidget(QWidget):
         card_layout.addLayout(top_row)
         card_layout.addWidget(self.ip_label)
 
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(14)
-        shadow.setOffset(0, 3)
-        shadow.setColor(QColor(0, 0, 0, 85))
-        self.card.setGraphicsEffect(shadow)
+        self.card_shadow = QGraphicsDropShadowEffect(self)
+        self.card_shadow.setBlurRadius(14)
+        self.card_shadow.setOffset(0, 3)
+        self.card_shadow.setColor(QColor(0, 0, 0, 85))
+        self.card.setGraphicsEffect(self.card_shadow)
 
         outer.addWidget(self.card)
 
     def _init_services(self):
         self.tray = WidgetTray(self)
         self.tray.toggle_requested.connect(self._toggle_visibility)
-        self.tray.refresh_requested.connect(self.fetch_ip)
+        self.tray.refresh_requested.connect(self._manual_refresh)
         self.tray.copy_requested.connect(self._copy_ip_to_clipboard)
         self.tray.copy_ipv6_requested.connect(self._copy_ipv6_to_clipboard)
         self.tray.settings_requested.connect(self._open_settings)
@@ -172,8 +173,29 @@ class IPWidget(QWidget):
         if app:
             app.installNativeEventFilter(self.session_watcher)
 
+    def _reset_backoff_and_timer(self):
+        self._fail_streak = 0
+        if hasattr(self, "poll_timer"):
+            self.poll_timer.setInterval(int(self.cfg["interval"]) * 1000)
+
+    def _apply_backoff_interval(self):
+        base_sec = int(self.cfg["interval"])
+        if self._fail_streak >= 6:
+            target_sec = max(base_sec, 60)
+        elif self._fail_streak >= 3:
+            target_sec = max(base_sec, 30)
+        else:
+            target_sec = base_sec
+        if hasattr(self, "poll_timer") and self.poll_timer.interval() != target_sec * 1000:
+            self.poll_timer.setInterval(target_sec * 1000)
+
+    def _manual_refresh(self):
+        self._reset_backoff_and_timer()
+        self.fetch_ip()
+
     def _on_session_resumed(self):
         self._is_afk_paused = False
+        self._reset_backoff_and_timer()
         QTimer.singleShot(1500, self.fetch_ip)
 
     def _on_update_found(self, info: dict):
@@ -224,8 +246,22 @@ class IPWidget(QWidget):
         active = self._is_hovered or self._dragging
         self.setWindowOpacity(min(1.0, base_opacity + 0.08) if active else base_opacity)
         self.card.setStyleSheet(
-            get_card_stylesheet(self._is_light(), active, self._loc_px, self._ip_px)
+            get_card_stylesheet(
+                self._is_light(),
+                active,
+                self._loc_px,
+                self._ip_px,
+                is_offline=self._last_fetch_failed
+            )
         )
+        if self._last_fetch_failed:
+            self.card_shadow.setBlurRadius(18)
+            self.card_shadow.setOffset(0, 0)
+            self.card_shadow.setColor(QColor(239, 68, 68, 135))
+        else:
+            self.card_shadow.setBlurRadius(14)
+            self.card_shadow.setOffset(0, 3)
+            self.card_shadow.setColor(QColor(0, 0, 0, 85))
 
     def _position_window(self):
         old_w, old_h = self.width(), self.height()
@@ -250,6 +286,7 @@ class IPWidget(QWidget):
         if not self.cfg.get("pause_on_idle", True):
             if self._is_afk_paused:
                 self._is_afk_paused = False
+                self._reset_backoff_and_timer()
                 self.fetch_ip()
             return
 
@@ -259,11 +296,12 @@ class IPWidget(QWidget):
         if idle_sec >= threshold:
             if not self._is_afk_paused:
                 self._is_afk_paused = True
-                if self.current_ip:
+                if self.current_ip and not self._last_fetch_failed:
                     self.status_dot.setStyleSheet("color: #64748b;")
         else:
             if self._is_afk_paused:
                 self._is_afk_paused = False
+                self._reset_backoff_and_timer()
                 self.fetch_ip()
 
     def _on_poll_tick(self):
@@ -280,14 +318,24 @@ class IPWidget(QWidget):
 
     def _on_ip_result(self, info: dict | None):
         if not info:
+            was_offline = self._last_fetch_failed
             self._last_fetch_failed = True
+            self._fail_streak += 1
+            self._apply_backoff_interval()
             self.status_dot.setStyleSheet("color: #ef4444;")
+            if not was_offline:
+                self._update_card_style()
             if not self.current_ip:
                 self.ip_label.setText(t("offline"))
                 self._position_window()
             return
 
+        was_offline = self._last_fetch_failed
         self._last_fetch_failed = False
+        self._reset_backoff_and_timer()
+        if was_offline:
+            self._update_card_style()
+
         new_ip, new_alpha3 = info["ip"], info["alpha3"]
         new_city = info.get("city", "")
         self.current_ipv6 = info.get("ipv6", "")
@@ -488,7 +536,7 @@ class IPWidget(QWidget):
             loc_desc = f"{self.current_alpha3}, {self.current_city}" if self.current_city else self.current_alpha3
             self.tray.update_status(self.current_ip, loc_desc, self.current_ipv6)
 
-        self.poll_timer.setInterval(int(self.cfg["interval"]) * 1000)
+        self._reset_backoff_and_timer()
         self._apply_window_flags(initial=False)
         self._apply_theme_and_scale()
         self._position_window()

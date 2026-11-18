@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import unittest
 from unittest.mock import patch
@@ -7,6 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QColor
 
 import i18n
 from config import DEFAULT_CONFIG, APP_VERSION
@@ -16,6 +17,7 @@ from updater import parse_version
 from hover_card import HoverCard
 from settings_ui import SettingsDialog
 from tray import WidgetTray
+from main import IPWidget
 
 
 class TestLocalization(unittest.TestCase):
@@ -47,9 +49,9 @@ class TestLocalization(unittest.TestCase):
             "app": "IPWidget",
             "loc": "RUS, Moscow",
             "ip": "1.2.3.4",
-            "ver": "0.6.0",
+            "ver": "0.6.1",
             "new_ver": "0.7.0",
-            "cur_ver": "0.6.0",
+            "cur_ver": "0.6.1",
             "notes": "Bug fixes",
             "error": "Timeout",
             "dest": "C:\\IPWidget_latest.exe",
@@ -94,9 +96,9 @@ class TestCoreLogic(unittest.TestCase):
 
     def test_version_comparison(self):
         """Проверяем сравнение версий для автообновления."""
-        self.assertTrue(parse_version("v0.6.1") > parse_version("0.6.0"))
-        self.assertTrue(parse_version("0.10.0") > parse_version("0.6.0"))
-        self.assertFalse(parse_version("v0.6.0") > parse_version(APP_VERSION))
+        self.assertTrue(parse_version("v0.6.2") > parse_version("0.6.1"))
+        self.assertTrue(parse_version("0.10.0") > parse_version("0.6.1"))
+        self.assertFalse(parse_version("v0.6.1") > parse_version(APP_VERSION))
 
 
 class TestUIComponents(unittest.TestCase):
@@ -125,6 +127,43 @@ class TestUIComponents(unittest.TestCase):
             tray.retranslate_ui(visible=True, has_ip=False)
             tray.update_status("1.1.1.1", "AUS, Sydney", "2606:4700::1111")
             tray.hide()
+
+    def test_offline_glow_and_polling_backoff(self):
+        """Проверяем красное свечение при обрыве связи и ступенчатый бэкофф опросов."""
+        with patch.object(IPWidget, "fetch_ip"):
+            widget = IPWidget()
+            try:
+                widget.cfg["interval"] = 5
+                widget._reset_backoff_and_timer()
+
+                # 1-я ошибка: красное свечение, штатный интервал 5 сек
+                widget._on_ip_result(None)
+                self.assertTrue(widget._last_fetch_failed)
+                self.assertIn("rgba(239, 68, 68", widget.card.styleSheet())
+                self.assertEqual(widget.card_shadow.color(), QColor(239, 68, 68, 135))
+                self.assertEqual(widget.poll_timer.interval(), 5000)
+
+                # 3-я ошибка подряд: бэкофф до 30 сек
+                widget._on_ip_result(None)
+                widget._on_ip_result(None)
+                self.assertEqual(widget.poll_timer.interval(), 30000)
+
+                # 6-я ошибка подряд: бэкофф до 60 сек
+                for _ in range(3):
+                    widget._on_ip_result(None)
+                self.assertEqual(widget.poll_timer.interval(), 60000)
+
+                # Возврат сети: сброс красного свечения и возврат 5 сек
+                widget._on_ip_result({"ip": "1.1.1.1", "alpha3": "AUS", "city": "Sydney", "ping_ms": 42})
+                self.assertFalse(widget._last_fetch_failed)
+                self.assertNotIn("rgba(239, 68, 68", widget.card.styleSheet())
+                self.assertEqual(widget.card_shadow.color(), QColor(0, 0, 0, 85))
+                self.assertEqual(widget.poll_timer.interval(), 5000)
+            finally:
+                widget.session_watcher.cleanup()
+                widget.hover_card.hide()
+                widget.tray.hide()
+                widget.close()
 
 
 if __name__ == "__main__":

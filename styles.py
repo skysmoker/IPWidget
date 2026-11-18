@@ -1,4 +1,4 @@
-import os
+﻿import os
 import tempfile
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor
@@ -22,7 +22,13 @@ def ensure_checkmark_icon() -> str:
     return icon_path.replace("\\", "/")
 
 
-def get_card_stylesheet(is_light: bool, active: bool, loc_px: int, ip_px: int) -> str:
+def get_card_stylesheet(
+    is_light: bool,
+    active: bool,
+    loc_px: int,
+    ip_px: int,
+    is_offline: bool = False
+) -> str:
     if is_light:
         bg = "rgba(255, 255, 255, 252)" if active else "rgba(255, 255, 255, 238)"
         border = "#3b82f6" if active else "#cbd5e1"
@@ -32,10 +38,15 @@ def get_card_stylesheet(is_light: bool, active: bool, loc_px: int, ip_px: int) -
         border = "#60a5fa" if active else "#3f3f46"
         fg, sub_fg = "#f4f4f5", "#a1a1aa"
 
+    border_width = "1px"
+    if is_offline:
+        border = "rgba(239, 68, 68, 0.92)" if active else "rgba(239, 68, 68, 0.78)"
+        border_width = "1.5px"
+
     return f"""
         QWidget#mainCard {{
             background-color: {bg};
-            border: 1px solid {border};
+            border: {border_width} solid {border};
             border-radius: 12px;
         }}
         QLabel#locLabel {{
