@@ -4,26 +4,20 @@
 
 Лёгкий и минималистичный десктопный виджет для Windows на Python и PyQt6. Отображает ваш текущий внешний IP-адрес, флаг страны, город и индикатор состояния сети прямо поверх рабочего стола.
 
-<table align="center">
-  <tr>
-    <td rowspan="2" align="center" valign="middle">
-      <img width="364" height="512" alt="screen-04" src="https://github.com/user-attachments/assets/a85712b6-24b4-41b2-b055-fdf2f444dbc0" />
-    </td>
-    <td align="center" valign="middle">
-      <img width="145" height="54" alt="screen-01" src="https://github.com/user-attachments/assets/51f629e0-f654-4cf0-98e3-1bd3da01566c" />
-      &nbsp;
-      <img width="205" height="54" alt="screen-02" src="https://github.com/user-attachments/assets/4160ab00-a502-4593-91eb-f7de67600783" />
-      &nbsp;
-      <img width="152" height="54" alt="screen-03" src="https://github.com/user-attachments/assets/fde9bf83-6a7e-4293-9e17-40963c21b8e7" />
-      &nbsp;
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle">
-      <img width="183" height="154" alt="screen-06" src="https://github.com/user-attachments/assets/d8ccb10a-9629-4440-acb4-2f24045e9499" />
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" valign="middle">
+        <img src="https://github.com/user-attachments/assets/3c6ccf76-b77b-4599-905f-6b50bb774208" alt="IPWidget Settings" width="300">
+      </td>
+      <td align="center" valign="middle">
+        <img src="https://github.com/user-attachments/assets/fbbc2ea3-8b20-46b6-b157-d9516cef32cd" alt="DEU — Frankfurt am Main" width="220"><br><br>
+        <img src="https://github.com/user-attachments/assets/379f69a4-8b4a-4ce1-bbba-9907aef86253" alt="FIN — Helsinki" width="220"><br><br>
+        <img src="https://github.com/user-attachments/assets/bdb3c108-12a1-41a4-9f87-0ae2751ce045" alt="RUS — Moscow" width="220">
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Основные возможности
 
