@@ -4,26 +4,20 @@
 
 A lightweight, minimalist Windows desktop widget built with Python and PyQt6 that displays your current public IP address, country flag, city, and connection status right on your screen.
 
-<table align="center">
-  <tr>
-    <td rowspan="2" align="center" valign="middle">
-      <img width="364" height="512" alt="screen-05" src="https://github.com/user-attachments/assets/4b7072a7-0d2f-49a7-a696-7634dd2fa72f" />
-    </td>
-    <td align="center" valign="middle">
-      <img width="145" height="54" alt="screen-01" src="https://github.com/user-attachments/assets/51f629e0-f654-4cf0-98e3-1bd3da01566c" />
-      &nbsp;
-      <img width="205" height="54" alt="screen-02" src="https://github.com/user-attachments/assets/4160ab00-a502-4593-91eb-f7de67600783" />
-      &nbsp;
-      <img width="152" height="54" alt="screen-03" src="https://github.com/user-attachments/assets/fde9bf83-6a7e-4293-9e17-40963c21b8e7" />
-      &nbsp;
-    </td>
-  </tr>
-  <tr>
-    <td align="center" valign="middle">
-      <img width="183" height="153" alt="screen-07" src="https://github.com/user-attachments/assets/809a95ac-1792-450c-97b5-cc751086b24e" />
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" valign="middle">
+        <img src="https://github.com/user-attachments/assets/164d20d3-6729-4b3c-8f4a-45be2b4944d2" alt="IPWidget Settings" width="300">
+      </td>
+      <td align="center" valign="middle">
+        <img src="https://github.com/user-attachments/assets/fbbc2ea3-8b20-46b6-b157-d9516cef32cd" alt="DEU — Frankfurt am Main" width="220"><br><br>
+        <img src="https://github.com/user-attachments/assets/379f69a4-8b4a-4ce1-bbba-9907aef86253" alt="FIN — Helsinki" width="220"><br><br>
+        <img src="https://github.com/user-attachments/assets/bdb3c108-12a1-41a4-9f87-0ae2751ce045" alt="RUS — Moscow" width="220">
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Features
 
